@@ -1,0 +1,285 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define TAM_HASH 11
+#define MAX_STR 100
+
+// ===================== STRUCTS =====================
+
+// Nó da árvore binária de salas
+typedef struct Sala {
+    char nome[MAX_STR];
+    struct Sala *esq, *dir;
+} Sala;
+
+// Nó da BST de pistas coletadas
+typedef struct PistaNode {
+    char pista[MAX_STR];
+    struct PistaNode *esq, *dir;
+} PistaNode;
+
+// Nó da lista encadeada na hash (separação por encadeamento)
+typedef struct HashNode {
+    char pista[MAX_STR];
+    char suspeito[MAX_STR];
+    struct HashNode *prox;
+} HashNode;
+
+// Tabela hash
+typedef struct HashTable {
+    HashNode *buckets[TAM_HASH];
+} HashTable;
+
+
+// ===================== FUNÇÕES AUXILIARES =====================
+
+// Hash simples baseado na soma de caracteres
+unsigned int funcaoHash(const char *str) {
+    unsigned int soma = 0;
+    for (int i = 0; str[i] != '\0'; i++) soma += (unsigned char)str[i];
+    return soma % TAM_HASH;
+}
+
+// Retorna pista estática associada à sala (ou NULL se não houver)
+const char* obterPistaSala(const char *nomeSala) {
+    if (strcmp(nomeSala, "Hall") == 0) return "Pegadas de lama recentes";
+    if (strcmp(nomeSala, "Biblioteca") == 0) return "Livro rasgado sobre venenos";
+    if (strcmp(nomeSala, "Cozinha") == 0) return "Faca ensanguentada na pia";
+    if (strcmp(nomeSala, "Jardim") == 0) return "Lenço com iniciais 'M'";
+    if (strcmp(nomeSala, "Escritorio") == 0) return "Carta ameaçadora assinada";
+    if (strcmp(nomeSala, "Adega") == 0) return "Garrafa de vinho adulterada";
+    if (strcmp(nomeSala, "Quarto") == 0) return NULL; // sala sem pista
+    if (strcmp(nomeSala, "Banheiro") == 0) return "Frasco vazio de sedativo";
+    return NULL;
+}
+
+// Associa uma pista a um suspeito de maneira fixa
+const char* obterSuspeitoDaPista(const char *pista) {
+    if (strcmp(pista, "Pegadas de lama recentes") == 0) return "Jardineiro";
+    if (strcmp(pista, "Livro rasgado sobre venenos") == 0) return "Bibliotecaria";
+    if (strcmp(pista, "Faca ensanguentada na pia") == 0) return "Cozinheiro";
+    if (strcmp(pista, "Lenço com iniciais 'M'") == 0) return "Mordomo";
+    if (strcmp(pista, "Carta ameaçadora assinada") == 0) return "Herdeiro";
+    if (strcmp(pista, "Garrafa de vinho adulterada") == 0) return "Sommelier";
+    if (strcmp(pista, "Frasco vazio de sedativo") == 0) return "Medica";
+    return "Desconhecido";
+}
+
+
+// ===================== FUNÇÕES PRINCIPAIS =====================
+
+/*
+ * criarSala()
+ * Cria dinamicamente uma sala da mansão (nó da árvore binária).
+ */
+Sala* criarSala(const char *nome) {
+    Sala *nova = (Sala*) malloc(sizeof(Sala));
+    if (!nova) {
+        printf("Erro de memória ao criar sala!\n");
+        exit(1);
+    }
+    strcpy(nova->nome, nome);
+    nova->esq = nova->dir = NULL;
+    return nova;
+}
+
+/*
+ * inserirPista() / adicionarPista()
+ * Insere uma pista na BST de pistas coletadas (ordenada alfabeticamente).
+ */
+PistaNode* inserirPista(PistaNode *raiz, const char *pista) {
+    if (raiz == NULL) {
+        PistaNode *novo = (PistaNode*) malloc(sizeof(PistaNode));
+        strcpy(novo->pista, pista);
+        novo->esq = novo->dir = NULL;
+        return novo;
+    }
+
+    int cmp = strcmp(pista, raiz->pista);
+    if (cmp < 0)
+        raiz->esq = inserirPista(raiz->esq, pista);
+    else if (cmp > 0)
+        raiz->dir = inserirPista(raiz->dir, pista);
+    // se cmp == 0, já existe: não insere duplicado
+
+    return raiz;
+}
+
+/*
+ * inserirNaHash()
+ * Insere a associação pista -> suspeito na tabela hash.
+ */
+void inserirNaHash(HashTable *hash, const char *pista, const char *suspeito) {
+    unsigned int idx = funcaoHash(pista);
+
+    HashNode *novo = (HashNode*) malloc(sizeof(HashNode));
+    strcpy(novo->pista, pista);
+    strcpy(novo->suspeito, suspeito);
+    novo->prox = hash->buckets[idx];
+    hash->buckets[idx] = novo;
+}
+
+/*
+ * encontrarSuspeito()
+ * Busca na hash o suspeito associado a uma pista.
+ */
+const char* encontrarSuspeito(HashTable *hash, const char *pista) {
+    unsigned int idx = funcaoHash(pista);
+    HashNode *atual = hash->buckets[idx];
+
+    while (atual) {
+        if (strcmp(atual->pista, pista) == 0)
+            return atual->suspeito;
+        atual = atual->prox;
+    }
+    return NULL;
+}
+
+/*
+ * explorarSalas()
+ * Navega interativamente pela árvore de salas e ativa/computa pistas.
+ */
+void explorarSalas(Sala *atual, PistaNode **bstPistas, HashTable *hash) {
+    if (atual == NULL) return;
+
+    char escolha;
+    while (atual != NULL) {
+        printf("\n== Você entrou no cômodo: %s ==\n", atual->nome);
+
+        const char *pista = obterPistaSala(atual->nome);
+        if (pista != NULL) {
+            printf("Você encontrou uma pista: \"%s\"\n", pista);
+
+            // coleta e registra
+            *bstPistas = inserirPista(*bstPistas, pista);
+
+            const char *suspeito = obterSuspeitoDaPista(pista);
+            inserirNaHash(hash, pista, suspeito);
+
+            printf("Essa pista parece apontar para: %s\n", suspeito);
+        } else {
+            printf("Não há pistas neste cômodo.\n");
+        }
+
+        printf("\nEscolha: esquerda (e), direita (d), sair (s): ");
+        scanf(" %c", &escolha);
+
+        if (escolha == 'e') {
+            if (atual->esq) atual = atual->esq;
+            else printf("Não há sala à esquerda.\n");
+        } else if (escolha == 'd') {
+            if (atual->dir) atual = atual->dir;
+            else printf("Não há sala à direita.\n");
+        } else if (escolha == 's') {
+            printf("\nVocê encerrou a exploração.\n");
+            break;
+        } else {
+            printf("Opção inválida.\n");
+        }
+    }
+}
+
+// Imprime BST em-ordem
+void listarPistas(PistaNode *raiz) {
+    if (!raiz) return;
+    listarPistas(raiz->esq);
+    printf("- %s\n", raiz->pista);
+    listarPistas(raiz->dir);
+}
+
+// Conta quantas pistas apontam para um suspeito na BST
+int contarPistasSuspeito(PistaNode *raiz, HashTable *hash, const char *suspeitoAcusado) {
+    if (!raiz) return 0;
+
+    int cont = 0;
+    cont += contarPistasSuspeito(raiz->esq, hash, suspeitoAcusado);
+
+    const char *sus = encontrarSuspeito(hash, raiz->pista);
+    if (sus && strcmp(sus, suspeitoAcusado) == 0)
+        cont++;
+
+    cont += contarPistasSuspeito(raiz->dir, hash, suspeitoAcusado);
+
+    return cont;
+}
+
+/*
+ * verificarSuspeitoFinal()
+ * Fase final: pede acusação e verifica se >= 2 pistas sustentam.
+ */
+void verificarSuspeitoFinal(PistaNode *bstPistas, HashTable *hash) {
+    if (!bstPistas) {
+        printf("\nVocê não coletou nenhuma pista. Sem chance de acusar!\n");
+        return;
+    }
+
+    printf("\n=== PISTAS COLETADAS ===\n");
+    listarPistas(bstPistas);
+
+    char suspeito[MAX_STR];
+    printf("\nDigite o nome do suspeito acusado: ");
+    scanf(" %[^\n]", suspeito);
+
+    int total = contarPistasSuspeito(bstPistas, hash, suspeito);
+
+    printf("\nPistas contra '%s': %d\n", suspeito, total);
+
+    if (total >= 2) {
+        printf("✅ Acusação sustentada! %s é o culpado(a)!\n", suspeito);
+    } else {
+        printf("❌ Pistas insuficientes. %s não pode ser condenado(a).\n", suspeito);
+    }
+}
+
+
+// ===================== MAIN =====================
+
+int main() {
+    // Inicializa hash vazia
+    HashTable hash;
+    for (int i = 0; i < TAM_HASH; i++)
+        hash.buckets[i] = NULL;
+
+    // BST de pistas começa vazia
+    PistaNode *bstPistas = NULL;
+
+    // Montagem fixa da mansão (árvore binária)
+    Sala *hall = criarSala("Hall");
+    Sala *biblioteca = criarSala("Biblioteca");
+    Sala *cozinha = criarSala("Cozinha");
+    Sala *jardim = criarSala("Jardim");
+    Sala *escritorio = criarSala("Escritorio");
+    Sala *adega = criarSala("Adega");
+    Sala *quarto = criarSala("Quarto");
+    Sala *banheiro = criarSala("Banheiro");
+
+    // Estrutura:
+    //          Hall
+    //       /        \
+    // Biblioteca    Cozinha
+    //   /    \       /    \
+    // Jardim Escrit. Adega Quarto
+    //               /
+    //           Banheiro
+
+    hall->esq = biblioteca;
+    hall->dir = cozinha;
+
+    biblioteca->esq = jardim;
+    biblioteca->dir = escritorio;
+
+    cozinha->esq = adega;
+    cozinha->dir = quarto;
+
+    adega->esq = banheiro;
+
+    printf("=== Detective Quest: Mansão Enigma ===\n");
+    printf("Explore a mansão e colete pistas!\n");
+
+    explorarSalas(hall, &bstPistas, &hash);
+    verificarSuspeitoFinal(bstPistas, &hash);
+
+    printf("\nFim de jogo!\n");
+    return 0;
+}
